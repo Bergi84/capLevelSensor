@@ -18,7 +18,9 @@ port
 	
 	bExc			: out std_logic;
 	bShld			: out std_logic;
-	bCap			: inOut std_logic_vector(3 downto 0)
+	bCap			: inOut std_logic_vector(3 downto 0);
+	
+	uartTx		: out std_logic
 );
 end;
 
@@ -38,8 +40,8 @@ architecture behavioral of capLevelSensor is
 	signal bCapVal				: array16B(0 to 3);
 	signal capValUpdate		: std_logic;
 	
-	signal aCapFiltVal		: array32B(0 to 3);
-	signal bCapFiltVal		: array32B(0 to 3);
+	signal capFiltVal			: array32B(0 to 7);
+	
 	signal aCapValFiltUpdate : std_logic_vector(3 downto 0);
 	signal bCapValFiltUpdate : std_logic_vector(3 downto 0);
 	
@@ -119,7 +121,7 @@ begin
 			inVal => aCapVal(I),
 			inUpdate => capValUpdate,
 			
-			outVal => aCapFiltVal(I),
+			outVal => capFiltVal(I),
 			outUpdate => aCapValFiltUpdate(I)
 		);
 		
@@ -137,10 +139,28 @@ begin
 			inVal => bCapVal(I),
 			inUpdate => capValUpdate,
 			
-			outVal => bCapFiltVal(I),
+			outVal => capFiltVal(I + 4),
 			outUpdate => bCapValFiltUpdate(I)
 		);
 	end generate;
 	
-	
+	Inst_dataPlotter: entity work.dataPlotter
+	generic map
+	(
+		valNibblCnt => 8,
+		dataValCnt => 8,
+		
+		bautrateDiv	=> 434
+	)
+	port map
+	(
+		clock => clk50Mhz,
+		rst => rst,
+		
+		data => capFiltVal,
+		
+		triPlot => '1',
+		
+		uartTx => uartTx
+	);
 end;
