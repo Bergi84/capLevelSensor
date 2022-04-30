@@ -39,6 +39,9 @@ architecture behavioral of capSensController is
 	constant all1		: std_logic_vector(capChCnt-1 downto 0) := (others => '1');
 	constant all0		: std_logic_vector(capChCnt-1 downto 0) := (others => '0');
 	
+	signal aCapInInt	: std_logic_vector(capChCnt-1 downto 0);
+	signal bCapInInt	: std_logic_vector(capChCnt-1 downto 0);
+	
 	signal sample		: std_logic;
 	signal timerCnt	: unsigned(15 downto 0);
 	
@@ -55,6 +58,9 @@ begin
 	begin
 		if(rising_edge(clockSamp))
 		then
+			aCapInInt <= aCapIn;
+			bCapInInt <= bCapIn;
+		
 			if(rst = '1')
 			then
 				sample <= '0';
@@ -72,17 +78,17 @@ begin
 					bShld <= '0';
 					
 					for I in 0 to capChCnt-1 loop
-						if(aCapIn(I) = '0')
+						if(aCapInInt(I) = '0')
 						then
 							aCapSample(I) <= timerCnt;
 						end if;
-						if(bCapIn(I) = '1')
+						if(bCapInInt(I) = '1')
 						then
 							bCapSample(I) <= timerCnt;
 						end if;
 					end loop;
 					
-					if((aCapIn  = all1 and bCapIn  = all0) or timerCnt = x"FFFF")
+					if((aCapInInt  = all1 and bCapInInt  = all0) or timerCnt = x"FFFF")
 					then
 						timerCnt <= to_unsigned(0, timerCnt'length);
 						sample <= '0';

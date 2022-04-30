@@ -38,6 +38,11 @@ architecture behavioral of capLevelSensor is
 	signal bCapVal				: array16B(0 to 3);
 	signal capValUpdate		: std_logic;
 	
+	signal aCapFiltVal		: array32B(0 to 3);
+	signal bCapFiltVal		: array32B(0 to 3);
+	signal aCapValFiltUpdate : std_logic_vector(3 downto 0);
+	signal bCapValFiltUpdate : std_logic_vector(3 downto 0);
+	
 	signal rst					: std_logic;
 begin
 	rst <= not pllLocked;
@@ -98,4 +103,44 @@ begin
 		capValUpdate => capValUpdate
 	);
 
+	Inst_dezFilter: for I in 0 to 3 generate
+	begin
+		Inst_aDezFilter: entity work.dezFilter
+		generic map
+		(
+			dezRate => 1024,
+			inWidth => 16,
+			outWidth => 32
+		)
+		port map
+		(
+			clock	=> clk50Mhz,
+			
+			inVal => aCapVal(I),
+			inUpdate => capValUpdate,
+			
+			outVal => aCapFiltVal(I),
+			outUpdate => aCapValFiltUpdate(I)
+		);
+		
+		Inst_bDezFilter: entity work.dezFilter
+		generic map
+		(
+			dezRate => 1024,
+			inWidth => 16,
+			outWidth => 32
+		)
+		port map
+		(
+			clock	=> clk50Mhz,
+			
+			inVal => bCapVal(I),
+			inUpdate => capValUpdate,
+			
+			outVal => bCapFiltVal(I),
+			outUpdate => bCapValFiltUpdate(I)
+		);
+	end generate;
+	
+	
 end;
