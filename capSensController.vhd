@@ -8,8 +8,10 @@ use work.types.all;
 entity capSensController is
 generic
 (
-	capChCnt		: integer range 1 to 16;
-	dischCnt		: integer range 1 to 65535
+	capChCnt			: integer range 1 to 16;
+	timerWidth		: integer range 1 to 16;
+	dischCnt			: integer range 1 to 65536;
+	dezRateWidth	: integer range 1 to 16
 );
 port
 (
@@ -43,13 +45,21 @@ architecture behavioral of capSensController is
 	signal bCapInInt	: std_logic_vector(capChCnt-1 downto 0);
 	
 	signal sample		: std_logic;
-	signal timerCnt	: unsigned(15 downto 0);
+	signal timerCnt	: unsigned(timerWidth-1 downto 0);
 	
 	signal doneTog		: std_logic;
-	signal doneTogOld	: std_logic;
+	signal doneTogBuf	: std_logic_vector(1 downto 0);
 	
-	signal aCapSample	: array16B(0 to capChCnt - 1);
-	signal bCapSample	: array16B(0 to capChCnt - 1);
+	Type sampArray_t is array (integer range <>) of unsigned(timerWidth-1 downto 0);
+	signal aCapSample	: sampArray_t(0 to capChCnt - 1);
+	signal bCapSample	: sampArray_t(0 to capChCnt - 1);
+	
+	Type dezArray_t is array (integer range <>) of unsigned(timerWidth + dezRateWidth - 1 downto 0);
+	signal aFilterSumOld 	: dezArray_t(0 to capChCnt-1);
+	signal bFilterSumOld		: dezArray_t(0 to capChCnt-1);
+	signal aFilterSum 		: dezArray_t(0 to capChCnt-1);
+	signal bFilterSum			: dezArray_t(0 to capChCnt-1);
+	signal sampleCnt			: unsigned(dezRateWidth-1 downto 0);
 begin
 	aCapOut <= (others => '0');
 	bCapOut <= (others => '1');
@@ -71,11 +81,20 @@ begin
 					aCapOe <= (others => '0');
 					bCapOe <= (others => '0');
 					
-					aExc <= '1';
-					bExc <= '0';
-					
-					aShld <= '1';
-					bShld <= '0';
+					if(timerCnt > 0)
+					then
+						aExc <= '1';
+						bExc <= '0';
+						
+						aShld <= '1';
+						bShld <= '0';
+					else
+						aExc <= '0';
+						bExc <= '1';
+						
+						aShld <= '0';
+						bShld <= '1';
+					end if;
 					
 					for I in 0 to capChCnt-1 loop
 						if(aCapInInt(I) = '0')
@@ -88,7 +107,7 @@ begin
 						end if;
 					end loop;
 					
-					if((aCapInInt  = all1 and bCapInInt  = all0) or timerCnt = x"FFFF")
+					if((aCapInInt  = all1 and bCapInInt  = all0) or timerCnt = 2**timerWidth - 1)
 					then
 						timerCnt <= to_unsigned(0, timerCnt'length);
 						sample <= '0';
@@ -99,11 +118,18 @@ begin
 				else
 					aCapOe <= (others => '1');
 					bCapOe <= (others => '1');
+					
+					aExc <= '0';
+					bExc <= '1';
+						
+					aShld <= '0';
+					bShld <= '1';
 				
-					if(timerCnt = dischCnt)
+					
+					if(timerCnt =  dischCnt - 1)
 					then
-						timerCnt <= to_unsigned(0, timerCnt'length);
 						sample <= '1';
+						timerCnt <= to_unsigned(0, timerCnt'length);
 					else
 						timerCnt <= timerCnt + 1;
 					end if;
@@ -117,15 +143,29 @@ begin
 		if(rising_edge(clockReg))
 		then
 			capValUpdate <= '0';
-			if(doneTogOld /= doneTog)
+			doneTogBuf <= doneTogBuf(0) & doneTog;
+			if(doneTogBuf(0) /= doneTogBuf(1))
 			then
-				capValUpdate <= '1';
 				for I in 0 to capChCnt-1 loop
-					aCapVal(I) <= aCapSample(I);
-					bCapVal(I) <= bCapSample(I);
+					aFilterSum(I) <= aFilterSum(I) + aCapSample(I);
+					bFilterSum(I) <= bFilterSum(I) + bCapSample(I);
 				end loop;
+
+				sampleCnt <= sampleCnt + 1;
+			
+				if(sampleCnt = 2**dezRateWidth - 1)
+				then
+					for I in 0 to capChCnt-1 loop
+						aCapVal(I) <= (others => '0');
+						bCapVal(I) <= (others => '0');
+						aCapVal(I)(timerWidth-1 downto 0) <= aFilterSum(I)(timerWidth + dezRateWidth - 1 downto dezRateWidth) - aFilterSumOld(I)(timerWidth + dezRateWidth - 1 downto dezRateWidth);
+						bCapVal(I)(timerWidth-1 downto 0) <= bFilterSum(I)(timerWidth + dezRateWidth - 1 downto dezRateWidth) - bFilterSumOld(I)(timerWidth + dezRateWidth - 1 downto dezRateWidth);
+						aFilterSumOld(I) <= aFilterSum(I);
+						bFilterSumOld(I) <= bFilterSum(I);
+					end loop;
+					capValUpdate <= '1';
+				end if;
 			end if;
-			doneTogOld <= doneTog;
 		end if;
 	end process;
 end;

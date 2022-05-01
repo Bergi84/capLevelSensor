@@ -10,6 +10,7 @@ port
 (
 	clk50Mhz		: in std_logic;
 	
+	key			: in std_logic_vector (1 downto 0);
 	led			: out std_logic_vector (7 downto 0);
 	
 	aExc			: out std_logic;
@@ -40,12 +41,10 @@ architecture behavioral of capLevelSensor is
 	signal bCapVal				: array16B(0 to 3);
 	signal capValUpdate		: std_logic;
 	
-	signal capFiltVal			: array32B(0 to 7);
-	
-	signal aCapValFiltUpdate : std_logic_vector(3 downto 0);
-	signal bCapValFiltUpdate : std_logic_vector(3 downto 0);
-	
 	signal rst					: std_logic;
+	
+	signal level 				: unsigned(7 downto 0);
+	signal recOffset			: std_logic;
 begin
 	rst <= not pllLocked;
 
@@ -79,12 +78,14 @@ begin
 	Inst_capSensCon: entity work.capSensController
 	generic map
 	(
-		capChCnt => 4, 
-		dischCnt => 256
+		capChCnt => 4,
+		timerWidth => 12,
+		dischCnt => 400,
+		dezRateWidth => 12
 	)
 	port map
 	(
-		clockSamp => clk200Mhz,
+		clockSamp => clk100Mhz,
 		clockReg	=> clk50Mhz,
 		rst => rst,
 		
@@ -104,50 +105,11 @@ begin
 		bCapVal => bCapVal,
 		capValUpdate => capValUpdate
 	);
-
-	Inst_dezFilter: for I in 0 to 3 generate
-	begin
-		Inst_aDezFilter: entity work.dezFilter
-		generic map
-		(
-			dezRate => 1024,
-			inWidth => 16,
-			outWidth => 32
-		)
-		port map
-		(
-			clock	=> clk50Mhz,
-			
-			inVal => aCapVal(I),
-			inUpdate => capValUpdate,
-			
-			outVal => capFiltVal(I),
-			outUpdate => aCapValFiltUpdate(I)
-		);
-		
-		Inst_bDezFilter: entity work.dezFilter
-		generic map
-		(
-			dezRate => 1024,
-			inWidth => 16,
-			outWidth => 32
-		)
-		port map
-		(
-			clock	=> clk50Mhz,
-			
-			inVal => bCapVal(I),
-			inUpdate => capValUpdate,
-			
-			outVal => capFiltVal(I + 4),
-			outUpdate => bCapValFiltUpdate(I)
-		);
-	end generate;
 	
 	Inst_dataPlotter: entity work.dataPlotter
 	generic map
 	(
-		valNibblCnt => 8,
+		valNibblCnt => 4,
 		dataValCnt => 8,
 		
 		bautrateDiv	=> 434
@@ -157,10 +119,51 @@ begin
 		clock => clk50Mhz,
 		rst => rst,
 		
-		data => capFiltVal,
+		data => aCapVal & bCapVal,
 		
-		triPlot => '1',
+		triPlot => capValUpdate,
 		
 		uartTx => uartTx
+	);
+	
+	recOffset <=  not key(0);
+	
+	Inst_levelCalc: entity work.levelCalc
+	generic map
+	(
+		refAirCapRatio => 50,
+		refFluCapRatio	=> 50,
+		measCapRatio => 255,
+		
+		dataWidth => 16
+	)
+	port map
+	(
+		clock	=> clk50Mhz,
+		rst => rst,
+
+		valRefAir => bCapVal(0),
+		valRefFlu => bCapVal(2),
+		valMeas => bCapVal(1),
+		valUpdate => capValUpdate,
+		
+		recOffset => recOffset,
+		
+		level	=> level
+	);
+	
+	Inst_ledController: entity work.ledController
+	generic map
+	(
+		divCntWidth	=> 13
+	)
+	port map
+	(
+		clock	=> clk50Mhz,
+		rst => rst,
+		
+		level	=> level,
+		
+		led => led
 	);
 end;
